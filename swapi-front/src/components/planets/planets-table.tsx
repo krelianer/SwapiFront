@@ -13,16 +13,24 @@ import FirstPageIcon from '@material-ui/icons/FirstPage';
 import KeyboardArrowLeft from '@material-ui/icons/KeyboardArrowLeft';
 import KeyboardArrowRight from '@material-ui/icons/KeyboardArrowRight';
 import LastPageIcon from '@material-ui/icons/LastPage';
+import { SwapiWrapper } from '../../models/swapi-wrapper';
+import { loadPlanetsPage } from '../../api/planets-api';
+import { CircularProgress, TableHead } from '@material-ui/core';
+import { Planets } from '../../models/planet';
+import PlanetDetails from './planet-details';
 
 const actionsStyles = (theme: Theme) =>
-createStyles({
-  root: {
-    flexShrink: 0,
-    color: theme.palette.text.secondary,
-    marginLeft: theme.spacing.unit * 2.5,
-  },
-});
-  
+  createStyles({
+    root: {
+      flexShrink: 0,
+      color: theme.palette.text.secondary,
+      marginLeft: theme.spacing.unit * 2.5,
+    },
+    progress: {
+      margin: theme.spacing.unit * 2,
+    },
+  });
+
 export interface TablePaginationProps extends WithStyles<typeof styles> {
   classes: any,
   count: number,
@@ -104,81 +112,139 @@ const TablePaginationActionsWrapped = withStyles(actionsStyles, { withTheme: tru
   TablePaginationActions,
 );
 
-let counter = 0;
-
-function createData(name: string, calories: number, fat: number) {
-  counter += 1;
-  return { id: counter, name, calories, fat };
-}
+const CustomTableCell = withStyles(theme => ({
+  head: {
+    backgroundColor: "#b9b9b9",
+    color: theme.palette.common.white,
+  },
+  body: {
+    fontSize: 14,
+  },
+}))(TableCell);
 
 const styles = (theme: Theme) =>
-createStyles({
-  root: {
-    width: '100%',
-    marginTop: theme.spacing.unit * 3,
-  },
-  table: {
-    minWidth: 500,
-  },
-  tableWrapper: {
-    overflowX: 'auto',
-  },
-});
+  createStyles({
+    root: {
+      width: '100%',
+      marginTop: theme.spacing.unit * 3,
+    },
+    table: {
+      minWidth: 500,
+    },
+    tableWrapper: {
+      overflowX: 'auto',
+    },
+    progress: {
+      margin: theme.spacing.unit * 2,
+    },
+  });
 
 
 export interface NavigationState {
-  rows : Array<any>;
   page: number;
   rowsPerPage: number;
+  emptyRows: number;
+  loading: boolean;
+  planetsPages: Array<Array<Planets>>;
+  dialogOpen: boolean;
+  selectedPlanet: Planets;
 }
 
-export interface PlanetsTableProps extends WithStyles<typeof styles> {}
+export interface PlanetsTableProps extends WithStyles<typeof styles> {
+  planetsWrapper: SwapiWrapper,
+  searchTerm: string,
+}
 
 class PlanetsTable extends React.Component<PlanetsTableProps, NavigationState> {
   state: NavigationState = {
-    rows: [
-      createData('Cupcake', 305, 3.7),
-      createData('Donut', 452, 25.0),
-      createData('Eclair', 262, 16.0),
-      createData('Frozen yoghurt', 159, 6.0),
-      createData('Gingerbread', 356, 16.0),
-      createData('Honeycomb', 408, 3.2),
-      createData('Ice cream sandwich', 237, 9.0),
-      createData('Jelly Bean', 375, 0.0),
-      createData('KitKat', 518, 26.0),
-      createData('Lollipop', 392, 0.2),
-      createData('Marshmallow', 318, 0),
-      createData('Nougat', 360, 19.0),
-    ],
     page: 0,
-    rowsPerPage: 5,
+    rowsPerPage: 10,
+    emptyRows: 0,
+    loading: false,
+    planetsPages: [],
+    dialogOpen: false,
+    selectedPlanet: new Planets(),
   };
 
-  handleChangePage = (event : React.MouseEvent<HTMLButtonElement> | null, page: number) => {
-    this.setState({ page });
-  };
+  handleChangePage = (event: React.MouseEvent<HTMLButtonElement> | null, page: number) => {
+    if (!this.state.planetsPages[page]) {
+      this.setState({ loading: true });
+      loadPlanetsPage(this.props.searchTerm, page + 1).then((response: any) => {
+        var wrapper: SwapiWrapper = response.data;
+        this.props.planetsWrapper.results = wrapper.results;
+        this.props.planetsWrapper.next = wrapper.next;
+        this.props.planetsWrapper.previous = wrapper.previous;
+        var planetsPage = this.state.planetsPages;
+        planetsPage[page] = wrapper.results;
+        this.setState({ planetsPages: planetsPage })
+        this.setState({ loading: false });
+        this.setState({ page });
+      });
+    }
+    else {
+      this.setState({ page });
+    }
+  }
+
+  componentDidUpdate(prevProps: PlanetsTableProps, prevState: NavigationState) {
+    if (this.props.searchTerm != prevProps.searchTerm) {
+      this.resetState();
+    }
+  }
+
+  componentDidMount() {
+    this.resetState();
+  }
+
+  resetState() {
+    this.setState({
+      page: 0,
+      planetsPages: [this.props.planetsWrapper.results],
+    })
+  }
+
+  handlePlanetsSelected = (event: any, key: Planets) => {
+    this.setState({
+      dialogOpen: true,
+      selectedPlanet: key,
+    })
+  }
+
+  handlePlanetsDialogClose = () => {
+    this.setState({
+      dialogOpen: false,
+    })
+  }
 
   handleChangeRowsPerPage = (event: any) => {
-    this.setState({ page: 0, rowsPerPage: event.target.value });
+    this.setState({ page: 0, rowsPerPage: +event.target.value });
   };
 
   render() {
     const { classes } = this.props;
-    const { rows, rowsPerPage, page } = this.state;
-    const emptyRows = rowsPerPage - Math.min(rowsPerPage, rows.length - page * rowsPerPage);
+    const { emptyRows, rowsPerPage, page } = this.state;
 
     return (
       <Paper className={classes.root}>
         <div className={classes.tableWrapper}>
           <Table className={classes.table}>
+            <TableHead>
+              <TableRow>
+                <CustomTableCell>Name</CustomTableCell>
+                <CustomTableCell align="center">Population</CustomTableCell>
+                <CustomTableCell align="center">Diameter</CustomTableCell>
+                <CustomTableCell align="center">Gravity</CustomTableCell>
+              </TableRow>
+            </TableHead>
             <TableBody>
-              {rows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage).map(row => (
-                <TableRow key={row.id}>
+              {(!this.state.loading && this.state.planetsPages[this.state.page]) && this.state.planetsPages[this.state.page].map(planet => (
+                <TableRow key={planet.url} onClick={event => this.handlePlanetsSelected(event, planet)}>
                   <TableCell component="th" scope="row">
-                    {row.name}
+                    {planet.name}
                   </TableCell>
-                  <TableCell align="right">{row.calories}</TableCell>
-                  <TableCell align="right">{row.fat}</TableCell>
+                  <TableCell align="center">{planet.population}</TableCell>
+                  <TableCell align="center">{planet.diameter}</TableCell>
+                  <TableCell align="center">{planet.gravity}</TableCell>
                 </TableRow>
               ))}
               {emptyRows > 0 && (
@@ -186,26 +252,28 @@ class PlanetsTable extends React.Component<PlanetsTableProps, NavigationState> {
                   <TableCell colSpan={6} />
                 </TableRow>
               )}
+              {this.state.loading && (<CircularProgress className={classes.progress} />)
+              }
             </TableBody>
             <TableFooter>
               <TableRow>
                 <TablePagination
-                  rowsPerPageOptions={[5, 10, 25]}
+                  rowsPerPageOptions={[]}
                   colSpan={3}
-                  count={rows.length}
+                  count={this.props.planetsWrapper.count}
                   rowsPerPage={rowsPerPage}
                   page={page}
                   SelectProps={{
                     native: true,
                   }}
                   onChangePage={this.handleChangePage}
-                  onChangeRowsPerPage={this.handleChangeRowsPerPage}
                   ActionsComponent={TablePaginationActionsWrapped}
                 />
               </TableRow>
             </TableFooter>
           </Table>
         </div>
+        <PlanetDetails planet={this.state.selectedPlanet} open={this.state.dialogOpen} onClose={this.handlePlanetsDialogClose}></PlanetDetails>
       </Paper>
     );
   }
@@ -213,6 +281,8 @@ class PlanetsTable extends React.Component<PlanetsTableProps, NavigationState> {
 
 (PlanetsTable as React.ComponentClass<PlanetsTableProps>).propTypes = {
   classes: PropTypes.object.isRequired,
+  planetsWrapper: PropTypes.array,
+
 } as any;
 
 export default withStyles(styles)(PlanetsTable);
